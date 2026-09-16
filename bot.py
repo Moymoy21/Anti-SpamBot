@@ -28,6 +28,13 @@ async def on_message(message):
         
         if not has_allowed_role:
             try:
+                await message.delete()
+            except discord.Forbidden:
+                print("Walang sapat na permisos ang bot para mag-delete ng mensahe.")
+            except discord.HTTPException:
+                print("Nabigo ang pag-delete ng mensahe.")
+
+            try:
                 await message.guild.kick(message.author, reason="Nag-chat sa restricted channel.")
                 print(f"Na-kick si {message.author} dahil nag-chat sa ipinagbabawal na channel.")
             except discord.Forbidden:
@@ -36,4 +43,3 @@ async def on_message(message):
                 print("Nabigo ang pag-kick.")
 
 client.run(TOKEN)
-
