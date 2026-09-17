@@ -9,6 +9,7 @@ client = discord.Client(intents=intents)
 
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID", 0))
 ALLOWED_ROLE_ID = int(os.getenv("ALLOWED_ROLE_ID", 0))
+LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", 0))  # Bagong variable para sa announcement channel
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 @client.event
@@ -26,7 +27,8 @@ async def on_message(message):
         
         has_allowed_role = any(role.id == ALLOWED_ROLE_ID for role in message.author.roles)
         
-        if not has_allowed_role:
+        if not has_has_allowed_role if 'has_has_allowed_role' in locals() else not has_allowed_role:
+            # 1. Burahin ang mensahe
             try:
                 await message.delete()
             except discord.Forbidden:
@@ -34,9 +36,16 @@ async def on_message(message):
             except discord.HTTPException:
                 print("Nabigo ang pag-delete ng mensahe.")
 
+            # 2. I-kick ang user
             try:
                 await message.guild.kick(message.author, reason="Nag-chat sa restricted channel.")
                 print(f"Na-kick si {message.author} dahil nag-chat sa ipinagbabawal na channel.")
+                
+                # 3. Magpadala ng announcement sa log channel
+                if LOG_CHANNEL_ID:
+                    log_channel = client.get_channel(LOG_CHANNEL_ID)
+                    if log_channel:
+                        await log_channel.send(f"**{message.author}** has been kicked for sending a message in the anti-spam channel.")
             except discord.Forbidden:
                 print("Walang sapat na permisos ang bot para mag-kick.")
             except discord.HTTPException:
