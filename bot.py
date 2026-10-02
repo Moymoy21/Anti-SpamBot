@@ -66,10 +66,14 @@ if message.channel.id == AI_CHANNEL_ID:
     # Check 1: Nag-reply ba sa bot?
     if message.reference and message.reference.message_id:
         try:
-            replied = await message.channel.fetch_message(message.reference.message_id)
-            if replied.author.id == client.user.id:
-                # Auto-trigger AI, walang .ai prefix needed
+            # Subukan kunin ang message (resolved na kung nasa cache)
+            replied = message.reference.resolved
+            if not replied:
+                replied = await message.channel.fetch_message(message.reference.message_id)
+
+            if replied and replied.author.id == client.user.id:
                 prompt = message.content.strip()
+                print(f"Reply detected from {message.author}: {prompt}", flush=True)
         except Exception as e:
             print(f"Fetch replied message error: {e}", flush=True)
 
@@ -77,12 +81,11 @@ if message.channel.id == AI_CHANNEL_ID:
     if prompt is None and message.content.startswith(AI_PREFIX):
         prompt = message.content[len(AI_PREFIX):].strip()
 
-    # Wala sa dalawang condition → ignore
     if prompt is None:
         return
 
     if not prompt:
-        await message.reply("⚠️ Usage: `.ai <your question>` o mag-reply sa message ko.")
+        await message.reply("⚠️ Usage: `.ai <tanong>` o mag-reply sa message ko.")
         return
 
     # Reset command
