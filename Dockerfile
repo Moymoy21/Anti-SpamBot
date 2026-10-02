@@ -18,6 +18,12 @@ RUN mkdir -p /app/deob/Deobfuscator/deobf/bin && \
     ln -sf /usr/local/bin/luau-analyze /app/deob/Deobfuscator/deobf/bin/luau-analyze && \
     ln -sf /usr/local/bin/luau-compile /app/deob/Deobfuscator/deobf/bin/luau-compile
 
+
+
+
+RUN ls -la /usr/local/bin/
+
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
