@@ -7,8 +7,8 @@ RUN curl -L https://github.com/luau-lang/luau/releases/latest/download/luau-ubun
     && unzip luau.zip -d /usr/local/bin \
     && rm luau.zip
 
-# I-clone ang deobfuscator
-RUN git clone https://github.com/KryptIT/luraph-v15-v14.x-deobfuscator.git /app/deob
+# I-clone ang BAGONG deobfuscator (mehCake)
+RUN git clone https://github.com/mehCake/luraph-deobfuscator-py.git /app/deob2
 
 WORKDIR /app
 COPY requirements.txt .
