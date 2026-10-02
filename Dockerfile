@@ -1,43 +1,10 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y \
-    git curl unzip wget file \
-    build-essential cmake g++ make \
-    && rm -rf /var/lib/apt/lists/*
-
-# I-BUILD ANG LUAU MULA SA SOURCE
-RUN git clone --depth 1 https://github.com/luau-lang/luau.git /tmp/luau && \
-    cd /tmp/luau && \
-    cmake -B build -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --target Luau.Repl.CLI -j$(nproc) && \
-    cmake --build build --target Luau.Analyze.CLI -j$(nproc) && \
-    cmake --build build --target Luau.Compile.CLI -j$(nproc) && \
-    cmake --build build --target Luau.Ast.CLI -j$(nproc) && \
-    echo "=== FINDING BINARIES ===" && \
-    find /tmp/luau/build -type f -executable -name "luau*" && \
-    echo "=== COPYING ===" && \
-    find /tmp/luau/build -type f -executable -name "luau" -exec cp {} /usr/local/bin/luau \; && \
-    find /tmp/luau/build -type f -executable -name "luau-analyze" -exec cp {} /usr/local/bin/luau-analyze \; && \
-    find /tmp/luau/build -type f -executable -name "luau-compile" -exec cp {} /usr/local/bin/luau-compile \; && \
-    find /tmp/luau/build -type f -executable -name "luau-ast" -exec cp {} /usr/local/bin/luau-ast \; && \
-    chmod +x /usr/local/bin/luau* && \
-    echo "=== FINAL CHECK ===" && \
-    ls -la /usr/local/bin/luau* && \
-    rm -rf /tmp/luau
-
-# I-clone ang KryptIT deobfuscator
-RUN git clone https://github.com/KryptIT/luraph-v15-v14.x-deobfuscator.git /app/deob
-
-# I-symlink ang Luau binaries sa loob ng deobfuscator
-RUN mkdir -p /app/deob/Deobfuscator/deobf/bin && \
-    ln -sf /usr/local/bin/luau /app/deob/Deobfuscator/deobf/bin/luau && \
-    ln -sf /usr/local/bin/luau-ast /app/deob/Deobfuscator/deobf/bin/luau-ast && \
-    ln -sf /usr/local/bin/luau-analyze /app/deob/Deobfuscator/deobf/bin/luau-analyze && \
-    ln -sf /usr/local/bin/luau-compile /app/deob/Deobfuscator/deobf/bin/luau-compile
-
 WORKDIR /app
+
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . .
 
 CMD ["python", "bot.py"]
