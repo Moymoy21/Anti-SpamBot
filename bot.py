@@ -104,10 +104,11 @@ async def on_message(message):
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
 
                 response = await client_ai.chat.completions.create(
-                    model="openai/gpt-oss-120b",
-                    messages=messages,
-                    temperature=0.4,
-                )
+    model="openai/gpt-oss-120b",
+    messages=messages,
+    temperature=0.4,
+    reasoning_effort="medium",  # Pwede: "low", "medium", "high"
+)
                 answer = response.choices[0].message.content
                 conversation_history[key].append({"role": "assistant", "content": answer})
 
