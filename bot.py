@@ -4,6 +4,7 @@ from discord import app_commands
 import subprocess
 import tempfile
 import asyncio
+import shutil
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -17,9 +18,7 @@ ALLOWED_ROLE_ID = int(os.getenv("ALLOWED_ROLE_ID", 0))
 LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", 0))
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-# 1. IDINAGDAG NATIN ITO: Yung ID ng Owner Role mo
 OWNER_ROLE_ID = 1455066902308327526
-
 DEOB_DIR = "/app/deob/Deobfuscator/deobf"
 
 @client.event
@@ -29,7 +28,6 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # --- EXISTING ANTI-SPAM LOGIC MO ---
     if message.author == client.user or not message.guild:
         return
 
@@ -60,20 +58,86 @@ async def on_message(message):
                 print(f"Nabigo ang pag-kick: {e}")
 
 
+# --- DROP-DOWN MENU CLASS ---
+class DeobSelect(discord.ui.Select):
+    def __init__(self, file_path):
+        self.file_path = file_path
+        
+        # Ito yung mga choices sa drop-down
+        options = [
+            discord.SelectOption(label="Luraph v15", value="v15", description="Para sa v15 scripts"),
+            discord.SelectOption(label="Luraph v14.9", value="14.9", description="Para sa v14.9 scripts"),
+            discord.SelectOption(label="Luraph v14.8", value="14.8", description="Para sa v14.8 scripts"),
+            discord.SelectOption(label="Luraph v14.7", value="14.7", description="Para sa v14.7 scripts"),
+        ]
+        
+        super().__init__(placeholder="Choose the Deobfuscator...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        # Siguraduhing yung nag-upload lang ang pwedeng pumili
+        if interaction.user.id != self.view.original_user.id:
+            await interaction.response.send_message("❌ Hindi ikaw ang nag-upload ng file na ito.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        choice = self.values[0]
+        out = os.path.join(os.path.dirname(self.file_path), "output.lua")
+
+        try:
+            if choice == "v15":
+                # v15 gamit ang deob.py
+                proc = await asyncio.create_subprocess_exec(
+                    "python", "deob.py", self.file_path, "-o", out,
+                    "--obfuscator", "luraph_v15",
+                    cwd=DEOB_DIR,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+            else:
+                # v14.x gamit ang cli.py
+                proc = await asyncio.create_subprocess_exec(
+                    "python", "cli.py", self.file_path, "-o", out,
+                    "--engine", choice,
+                    cwd=DEOB_DIR,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+            
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+            if os.path.exists(out):
+                await interaction.followup.send(file=discord.File(out))
+            else:
+                await interaction.followup.send(f"❌ Failed: {stderr.decode()[:1000]}")
+
+        except asyncio.TimeoutError:
+            await interaction.followup.send("❌ Timeout ang deobfuscation.")
+        
+        # Linisin ang temporary folder pagkatapos
+        try:
+            shutil.rmtree(os.path.dirname(self.file_path))
+        except:
+            pass
+
+
+# --- VIEW CLASS (naglalaman ng drop-down) ---
+class DeobView(discord.ui.View):
+    def __init__(self, file_path, original_user):
+        super().__init__(timeout=300) # 5 minuto bago mag-expire
+        self.original_user = original_user
+        self.add_item(DeobSelect(file_path))
+
+
 # --- DEOBFUSCATION COMMAND (OWNER ONLY) ---
 @tree.command(name="deob", description="I-deobfuscate ang Luraph file (Owner only)")
 async def deob(interaction: discord.Interaction, file: discord.Attachment):
     
-    # 2. AUTHORIZATION CHECK: Dito natin chinecheck kung may Owner Role o kaya ay Server Owner
     is_owner = any(role.id == OWNER_ROLE_ID for role in interaction.user.roles)
     is_server_owner = interaction.guild and interaction.guild.owner_id == interaction.user.id
     
     if not (is_owner or is_server_owner):
-        # Ephemeral = ikaw lang makakakita ng message, hindi yung ibang tao sa channel
-        await interaction.response.send_message("❌ Hindi ka authorized na gumamit ng command na ito. Owner Role lang ang pwedeng mag-deobfuscate.", ephemeral=True)
+        await interaction.response.send_message("❌ Hindi ka authorized. Owner Role lang ang pwedeng mag-deobfuscate.", ephemeral=True)
         return
 
-    # Kung authorized, saka pa lang mag-defer
     await interaction.response.defer()
 
     if not file.filename.endswith(".lua"):
@@ -84,37 +148,34 @@ async def deob(interaction: discord.Interaction, file: discord.Attachment):
         await interaction.followup.send("Masyadong malaki ang file (max 5MB).")
         return
 
-    with tempfile.TemporaryDirectory() as tmp:
-        inp = os.path.join(tmp, "input.lua")
-        out = os.path.join(tmp, "output.lua")
-        await file.save(inp)
+    # Gumawa ng temporary directory na hindi agad mabubura
+    tmpdir = tempfile.mkdtemp()
+    inp = os.path.join(tmpdir, "input.lua")
+    await file.save(inp)
 
-        try:
-            # Subukan muna ang v15
-            proc = await asyncio.create_subprocess_exec(
-                "python", "deob.py", inp, "-o", out,
-                "--obfuscator", "luraph_v15",
-                cwd=DEOB_DIR,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    # --- DETECTION LOGIC ---
+    detected_version = "Unknown (Pumili sa drop-down)"
+    try:
+        with open(inp, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read(2000) # Basahin yung unang 2000 characters
+            
+            if "v15" in content.lower() or "luraph_v15" in content.lower():
+                detected_version = "Luraph v15"
+            elif "v14.9" in content.lower():
+                detected_version = "Luraph v14.9"
+            elif "v14.8" in content.lower():
+                detected_version = "Luraph v14.8"
+            elif "v14.7" in content.lower():
+                detected_version = "Luraph v14.7"
+    except Exception as e:
+        print(f"Detection error: {e}")
 
-            # Kung fail, subukan ang v14
-            if proc.returncode != 0 or not os.path.exists(out):
-                proc = await asyncio.create_subprocess_exec(
-                    "python", "cli.py", inp, "-o", out,
-                    "--engine", "14.9",
-                    cwd=DEOB_DIR,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    # Gumawa ng view na may drop-down
+    view = DeobView(inp, interaction.user)
 
-            if os.path.exists(out):
-                await interaction.followup.send(file=discord.File(out))
-            else:
-                await interaction.followup.send(f"Failed: {stderr.decode()[:1000]}")
-
-        except asyncio.TimeoutError:
-            await interaction.followup.send("Timeout ang deobfuscation. Masyadong malaki o kumplikado ang file.")
+    await interaction.followup.send(
+        f"🔍 **Detected:** {detected_version}\n\n👇 **Choose the Deobfuscator:**",
+        view=view
+    )
 
 client.run(TOKEN)
