@@ -3,6 +3,12 @@ import discord
 from discord import app_commands
 from openai import AsyncOpenAI
 
+from collections import defaultdict
+
+# Memory per user per channel: (channel_id, user_id) -> list of messages
+conversation_history = defaultdict(list)
+MAX_HISTORY = 20  # Keep last 20 messages (10 exchanges)
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -67,24 +73,42 @@ async def on_message(message):
             return
 
         prompt = message.content[len(AI_PREFIX):].strip()
-        if not prompt:
-            await message.reply("⚠️ Usage: `.ai <your question>`")
-            return
+if not prompt:
+    await message.reply("⚠️ Usage: `.ai <your question>`")
+    return
 
+# Reset command
+if prompt.lower() in ["reset", "clear"]:
+    key = (message.channel.id, message.author.id)
+    conversation_history.pop(key, None)
+    await message.reply("🧹 Conversation memory cleared.")
+    return
         async with message.channel.typing():
-            try:
-                response = await client_ai.chat.completions.create(
-                    model="openai/gpt-oss-120b",
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.4,
-                )
-                answer = response.choices[0].message.content
-            except Exception as e:
-                answer = f"⚠️ AI Error: `{e}`"
+    try:
+        key = (message.channel.id, message.author.id)
 
+        # Idagdag ang bagong user message
+        conversation_history[key].append({"role": "user", "content": prompt})
+
+        # Trim kung masyadong mahaba na
+        if len(conversation_history[key]) > MAX_HISTORY:
+            conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
+
+        # Buuin ang messages: system + history
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+
+        response = await client_ai.chat.completions.create(
+            model="deepseek-r1-distill-llama-70b",
+            messages=messages,
+            temperature=0.4,
+        )
+        answer = response.choices[0].message.content
+
+        # I-save ang AI reply sa history
+        conversation_history[key].append({"role": "assistant", "content": answer})
+
+    except Exception as e:
+        answer = f"⚠️ AI Error: `{e}`"
         for i in range(0, len(answer), 1900):
             chunk = answer[i:i+1900]
             if i == 0:
