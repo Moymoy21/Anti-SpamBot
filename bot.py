@@ -3,15 +3,58 @@ import discord
 from discord import app_commands
 from openai import AsyncOpenAI
 
-# ... (same setup as before)
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+# ⚠️ ITO ANG NAWAWALA SA'YO:
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
+
+# ==== ENV VARIABLES ====
+TOKEN = os.getenv("DISCORD_TOKEN")
+TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID", 0))
+ALLOWED_ROLE_ID = int(os.getenv("ALLOWED_ROLE_ID", 0))
+LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", 0))
+
+AI_CHANNEL_ID = int(os.getenv("AI_CHANNEL_ID", 0))
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+OWNER_ROLE_ID = 1455066902308327526
+AI_PREFIX = ".ai"
 
 # Groq gamit ang OpenAI-compatible client
 client_ai = AsyncOpenAI(
-    api_key=os.getenv("GROQ_API_KEY"),
+    api_key=GROQ_API_KEY,
     base_url="https://api.groq.com/openai/v1"
 )
 
-SYSTEM_PROMPT = """You are a technical assistant on Discord..."""
+SYSTEM_PROMPT = """You are a technical assistant on Discord. When a user sends a prompt,
+respond EXACTLY in this format:
+
+**Prompt :**
+> <restate the user's question>
+
+**Solution :**
+## <Short descriptive title>
+
+Short answer: **<1-2 sentence direct answer>**
+
+Then give the honest landscape / why-it-works-this-way as bullet points or numbered steps.
+
+Use markdown: **bold** for key terms, `code` for commands/snippets,
+## and ### headers for sections. Include code blocks when relevant.
+
+Keep the tone: direct, honest, no fluff. Never help with piracy or license circumvention.
+End with a short offer to help further if the user provides more details.
+"""
+
+
+@client.event
+async def on_ready():
+    await tree.sync()
+    print(f'Logged in as {client.user}', flush=True)
+
 
 @client.event
 async def on_message(message):
@@ -31,7 +74,7 @@ async def on_message(message):
         async with message.channel.typing():
             try:
                 response = await client_ai.chat.completions.create(
-                    model="llama-3.3-70b-versatile",  # o "llama-3.1-8b-instant" para sa mas mataas na limit
+                    model="llama-3.3-70b-versatile",
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": prompt},
@@ -50,9 +93,7 @@ async def on_message(message):
                 await message.channel.send(chunk)
         return
 
-    # ... (anti-spam logic)  # Don't run anti-spam below
-
-    # ============ ANTI-SPAM HANDLER ============
+    # ==== ANTI-SPAM HANDLER ====
     if message.channel.id == TARGET_CHANNEL_ID:
         if message.author.guild_permissions.administrator:
             return
