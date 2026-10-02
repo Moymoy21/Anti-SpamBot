@@ -4,6 +4,9 @@ from discord import app_commands
 from openai import AsyncOpenAI
 
 from collections import defaultdict
+from tavily import TavilyClient
+
+tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 # Memory per user per channel: (channel_id, user_id) -> list of messages
 conversation_history = defaultdict(list)
