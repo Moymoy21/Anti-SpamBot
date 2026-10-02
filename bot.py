@@ -20,8 +20,8 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 OWNER_ROLE_ID = 1455066902308327526
 
-# --- BINAGO NATIN ITO: Tumutukoy na sa bagong folder na /app/deob2 ---
-DEOB_DIR = "/app/deob2" 
+# --- ITO ANG TAMANG PATH PARA SA KRYPTIT REPO ---
+DEOB_DIR = "/app/deob/Deobfuscator/deobf"
 
 @client.event
 async def on_ready():
@@ -71,7 +71,7 @@ class DeobSelect(discord.ui.Select):
             discord.SelectOption(label="Luraph v15", value="v15", description="Para sa v15 scripts"),
             discord.SelectOption(label="Luraph v14.9", value="14.9", description="Para sa v14.9 scripts"),
             discord.SelectOption(label="Luraph v14.8", value="14.8", description="Para sa v14.8 scripts"),
-            discord.SelectOption(label="Luraph v14.7", value="14.7", description="Para sa v14.7 scripts"),
+            discord.SelectOption(label="Luraph v14.7", value="14.7", description="Para sa v14.7 scripts (may fix)"),
         ]
         
         super().__init__(placeholder="Choose the Deobfuscator...", min_values=1, max_values=1, options=options)
@@ -87,22 +87,31 @@ class DeobSelect(discord.ui.Select):
         out = os.path.join(os.path.dirname(self.file_path), "output.lua")
 
         try:
-            # Dito natin ipapatakbo ang mehCake tool
-            # Karaniwan sa mehCake, ang command ay: python main.py input.lua -o output.lua
-            # Kung magka-error, maaaring kailangan i-adjust ang arguments na ito.
-            proc = await asyncio.create_subprocess_exec(
-                "python", "main.py", self.file_path, "-o", out,
-                cwd=DEOB_DIR,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
+            if choice == "v15":
+                # v15 gamit ang deob.py
+                proc = await asyncio.create_subprocess_exec(
+                    "python", "deob.py", self.file_path, "-o", out,
+                    "--obfuscator", "luraph_v15",
+                    cwd=DEOB_DIR,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+            else:
+                # Para sa v14.x, gamitin ang cli.py at idagdag ang --no-hooks
+                # Ang --no-hooks ay lalaktawan ang patch_entries step na nag-cacrash
+                proc = await asyncio.create_subprocess_exec(
+                    "python", "cli.py", self.file_path, "-o", out,
+                    "--engine", choice,
+                    "--no-hooks",  # <--- ITO ANG FIX
+                    cwd=DEOB_DIR,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
             
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
 
             if os.path.exists(out):
                 await interaction.followup.send(file=discord.File(out))
             else:
-                # Fallback kung iba ang syntax ng output ng mehCake
-                # Minsan kasi automatic na ginagawa yung output.lua sa tabi ng input
+                # Fallback kung iba ang pangalan ng output
                 possible_output = self.file_path.replace(".lua", ".deob.lua")
                 if os.path.exists(possible_output):
                     await interaction.followup.send(file=discord.File(possible_output))
