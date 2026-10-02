@@ -11,9 +11,9 @@ RUN git clone --depth 1 https://github.com/luau-lang/luau.git /tmp/luau && \
     cd /tmp/luau && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build --target Luau.Repl.CLI -j$(nproc) && \
-    cmake --build build --target Luau.Analyze -j$(nproc) && \
+    cmake --build build --target Luau.Analyze.CLI -j$(nproc) && \
     cp build/Luau.Repl.CLI /usr/local/bin/luau && \
-    cp build/Luau.Analyze /usr/local/bin/luau-analyze && \
+    cp build/Luau.Analyze.CLI /usr/local/bin/luau-analyze && \
     cp build/Luau.Repl.CLI /usr/local/bin/luau-ast && \
     cp build/Luau.Repl.CLI /usr/local/bin/luau-compile && \
     chmod +x /usr/local/bin/luau* && \
