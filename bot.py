@@ -19,7 +19,9 @@ LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", 0))
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 OWNER_ROLE_ID = 1455066902308327526
-DEOB_DIR = "/app/deob/Deobfuscator/deobf"
+
+# --- BINAGO NATIN ITO: Tumutukoy na sa bagong folder na /app/deob2 ---
+DEOB_DIR = "/app/deob2" 
 
 @client.event
 async def on_ready():
@@ -28,6 +30,7 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    # --- EXISTING ANTI-SPAM LOGIC MO ---
     if message.author == client.user or not message.guild:
         return
 
@@ -63,8 +66,8 @@ class DeobSelect(discord.ui.Select):
     def __init__(self, file_path):
         self.file_path = file_path
         
-        # Ito yung mga choices sa drop-down
         options = [
+            discord.SelectOption(label="Auto-Detect", value="auto", description="Awtomatikong i-detect ang version"),
             discord.SelectOption(label="Luraph v15", value="v15", description="Para sa v15 scripts"),
             discord.SelectOption(label="Luraph v14.9", value="14.9", description="Para sa v14.9 scripts"),
             discord.SelectOption(label="Luraph v14.8", value="14.8", description="Para sa v14.8 scripts"),
@@ -74,7 +77,6 @@ class DeobSelect(discord.ui.Select):
         super().__init__(placeholder="Choose the Deobfuscator...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        # Siguraduhing yung nag-upload lang ang pwedeng pumili
         if interaction.user.id != self.view.original_user.id:
             await interaction.response.send_message("❌ Hindi ikaw ang nag-upload ng file na ito.", ephemeral=True)
             return
@@ -85,44 +87,40 @@ class DeobSelect(discord.ui.Select):
         out = os.path.join(os.path.dirname(self.file_path), "output.lua")
 
         try:
-            if choice == "v15":
-                # v15 gamit ang deob.py
-                proc = await asyncio.create_subprocess_exec(
-                    "python", "deob.py", self.file_path, "-o", out,
-                    "--obfuscator", "luraph_v15",
-                    cwd=DEOB_DIR,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-            else:
-                # v14.x gamit ang cli.py
-                proc = await asyncio.create_subprocess_exec(
-                    "python", "cli.py", self.file_path, "-o", out,
-                    "--engine", choice,
-                    cwd=DEOB_DIR,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
+            # Dito natin ipapatakbo ang mehCake tool
+            # Karaniwan sa mehCake, ang command ay: python main.py input.lua -o output.lua
+            # Kung magka-error, maaaring kailangan i-adjust ang arguments na ito.
+            proc = await asyncio.create_subprocess_exec(
+                "python", "main.py", self.file_path, "-o", out,
+                cwd=DEOB_DIR,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
             
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
 
             if os.path.exists(out):
                 await interaction.followup.send(file=discord.File(out))
             else:
-                await interaction.followup.send(f"❌ Failed: {stderr.decode()[:1000]}")
+                # Fallback kung iba ang syntax ng output ng mehCake
+                # Minsan kasi automatic na ginagawa yung output.lua sa tabi ng input
+                possible_output = self.file_path.replace(".lua", ".deob.lua")
+                if os.path.exists(possible_output):
+                    await interaction.followup.send(file=discord.File(possible_output))
+                else:
+                    await interaction.followup.send(f"❌ Failed: {stderr.decode()[:1000]}")
 
         except asyncio.TimeoutError:
             await interaction.followup.send("❌ Timeout ang deobfuscation.")
         
-        # Linisin ang temporary folder pagkatapos
         try:
             shutil.rmtree(os.path.dirname(self.file_path))
         except:
             pass
 
 
-# --- VIEW CLASS (naglalaman ng drop-down) ---
 class DeobView(discord.ui.View):
     def __init__(self, file_path, original_user):
-        super().__init__(timeout=300) # 5 minuto bago mag-expire
+        super().__init__(timeout=300)
         self.original_user = original_user
         self.add_item(DeobSelect(file_path))
 
@@ -148,16 +146,14 @@ async def deob(interaction: discord.Interaction, file: discord.Attachment):
         await interaction.followup.send("Masyadong malaki ang file (max 5MB).")
         return
 
-    # Gumawa ng temporary directory na hindi agad mabubura
     tmpdir = tempfile.mkdtemp()
     inp = os.path.join(tmpdir, "input.lua")
     await file.save(inp)
 
-    # --- DETECTION LOGIC ---
     detected_version = "Unknown (Pumili sa drop-down)"
     try:
         with open(inp, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read(2000) # Basahin yung unang 2000 characters
+            content = f.read(2000)
             
             if "v15" in content.lower() or "luraph_v15" in content.lower():
                 detected_version = "Luraph v15"
@@ -170,7 +166,6 @@ async def deob(interaction: discord.Interaction, file: discord.Attachment):
     except Exception as e:
         print(f"Detection error: {e}")
 
-    # Gumawa ng view na may drop-down
     view = DeobView(inp, interaction.user)
 
     await interaction.followup.send(
