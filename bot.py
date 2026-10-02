@@ -104,7 +104,7 @@ async def on_message(message):
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
 
                 response = await client_ai.chat.completions.create(
-                    model="deepseek-r1-distill-llama-70b",
+                    model="openai/gpt-oss-120b",
                     messages=messages,
                     temperature=0.4,
                 )
