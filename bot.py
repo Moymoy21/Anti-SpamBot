@@ -60,86 +60,85 @@ async def on_message(message):
         return
 
     # ==== AI HANDLER ====
-if message.channel.id == AI_CHANNEL_ID:
-    prompt = None
+    if message.channel.id == AI_CHANNEL_ID:
+        prompt = None
 
-    # Check 1: Nag-reply ba sa bot?
-    if message.reference and message.reference.message_id:
-        try:
-            # Subukan kunin ang message (resolved na kung nasa cache)
-            replied = message.reference.resolved
-            if not replied:
-                replied = await message.channel.fetch_message(message.reference.message_id)
+        # Check 1: Nag-reply ba sa bot?
+        if message.reference and message.reference.message_id:
+            try:
+                replied = message.reference.resolved
+                if not replied:
+                    replied = await message.channel.fetch_message(message.reference.message_id)
 
-            if replied and replied.author.id == client.user.id:
-                prompt = message.content.strip()
-                print(f"Reply detected from {message.author}: {prompt}", flush=True)
-        except Exception as e:
-            print(f"Fetch replied message error: {e}", flush=True)
+                if replied and replied.author.id == client.user.id:
+                    prompt = message.content.strip()
+                    print(f"Reply detected from {message.author}: {prompt}", flush=True)
+            except Exception as e:
+                print(f"Fetch replied message error: {e}", flush=True)
 
-    # Check 2: May .ai prefix ba?
-    if prompt is None and message.content.startswith(AI_PREFIX):
-        prompt = message.content[len(AI_PREFIX):].strip()
+        # Check 2: May .ai prefix ba?
+        if prompt is None and message.content.startswith(AI_PREFIX):
+            prompt = message.content[len(AI_PREFIX):].strip()
 
-    if prompt is None:
-        return
+        if prompt is None:
+            return
 
-    if not prompt:
-        await message.reply("⚠️ Usage: `.ai <tanong>` o mag-reply sa message ko.")
-        return
+        if not prompt:
+            await message.reply("⚠️ Usage: `.ai <tanong>` o mag-reply sa message ko.")
+            return
 
-    # Reset command
-    if prompt.lower() in ["reset", "clear"]:
-        key = (message.channel.id, message.author.id)
-        conversation_history.pop(key, None)
-        await message.reply("🧹 Conversation memory cleared.")
-        return
-
-    async with message.channel.typing():
-        try:
+        # Reset command
+        if prompt.lower() in ["reset", "clear"]:
             key = (message.channel.id, message.author.id)
+            conversation_history.pop(key, None)
+            await message.reply("🧹 Conversation memory cleared.")
+            return
 
-            search_keywords = ["search", "latest", "news", "what is", "who is", "when did", "how to"]
-            should_search = any(kw in prompt.lower() for kw in search_keywords) or len(prompt) > 50
+        async with message.channel.typing():
+            try:
+                key = (message.channel.id, message.author.id)
 
-            search_context = ""
-            if should_search:
-                try:
-                    results = tavily.search(query=prompt, max_results=3, search_depth="basic")
-                    if results and results.get("results"):
-                        search_context = "\n\n[Web Search Results]\n"
-                        for r in results["results"]:
-                            search_context += f"- {r['title']}: {r['content'][:300]}\n"
-                except Exception as e:
-                    print(f"Search error: {e}", flush=True)
+                search_keywords = ["search", "latest", "news", "what is", "who is", "when did", "how to"]
+                should_search = any(kw in prompt.lower() for kw in search_keywords) or len(prompt) > 50
 
-            user_content = prompt + search_context
-            conversation_history[key].append({"role": "user", "content": user_content})
+                search_context = ""
+                if should_search:
+                    try:
+                        results = tavily.search(query=prompt, max_results=3, search_depth="basic")
+                        if results and results.get("results"):
+                            search_context = "\n\n[Web Search Results]\n"
+                            for r in results["results"]:
+                                search_context += f"- {r['title']}: {r['content'][:300]}\n"
+                    except Exception as e:
+                        print(f"Search error: {e}", flush=True)
 
-            if len(conversation_history[key]) > MAX_HISTORY:
-                conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
+                user_content = prompt + search_context
+                conversation_history[key].append({"role": "user", "content": user_content})
 
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+                if len(conversation_history[key]) > MAX_HISTORY:
+                    conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
 
-            response = await client_ai.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=messages,
-                temperature=0.4,
-                reasoning_effort="medium",
-            )
-            answer = response.choices[0].message.content
-            conversation_history[key].append({"role": "assistant", "content": answer})
+                messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
 
-        except Exception as e:
-            answer = f"⚠️ AI Error: `{e}`"
+                response = await client_ai.chat.completions.create(
+                    model="openai/gpt-oss-120b",
+                    messages=messages,
+                    temperature=0.4,
+                    reasoning_effort="medium",
+                )
+                answer = response.choices[0].message.content
+                conversation_history[key].append({"role": "assistant", "content": answer})
 
-    for i in range(0, len(answer), 1900):
-        chunk = answer[i:i+1900]
-        if i == 0:
-            await message.reply(chunk)
-        else:
-            await message.channel.send(chunk)
-    return
+            except Exception as e:
+                answer = f"⚠️ AI Error: `{e}`"
+
+        for i in range(0, len(answer), 1900):
+            chunk = answer[i:i+1900]
+            if i == 0:
+                await message.reply(chunk)
+            else:
+                await message.channel.send(chunk)
+        return
 
     # ==== ANTI-SPAM HANDLER ====
     if message.channel.id == TARGET_CHANNEL_ID:
