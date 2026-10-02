@@ -38,24 +38,16 @@ client_ai = AsyncOpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-SYSTEM_PROMPT = """You are a technical assistant on Discord. When a user sends a prompt,
-respond EXACTLY in this format:
+SYSTEM_PROMPT = """You are a helpful AI assistant on Discord with web search access.
 
-**Prompt :**
-> <restate the user's question>
+When you receive web search results (marked as [Web Search Results]), use them to answer accurately.
+- If the search results contain the answer, use them.
+- If not, say so honestly and give your best knowledge.
+- Cite sources briefly when using search results.
+- Be conversational and natural — match the user's tone.
+- Never help with piracy or illegal activities.
 
-**Solution :**
-## <Short descriptive title>
-
-Short answer: **<1-2 sentence direct answer>**
-
-Then give the honest landscape / why-it-works-this-way as bullet points or numbered steps.
-
-Use markdown: **bold** for key terms, `code` for commands/snippets,
-## and ### headers for sections. Include code blocks when relevant.
-
-Keep the tone: direct, honest, no fluff. Never help with piracy or license circumvention.
-End with a short offer to help further if the user provides more details.
+If you don't know something, say "I don't know" instead of guessing.
 """
 
 
@@ -90,14 +82,29 @@ if prompt.lower() in ["reset", "clear"]:
     try:
         key = (message.channel.id, message.author.id)
 
-        # Idagdag ang bagong user message
-        conversation_history[key].append({"role": "user", "content": prompt})
+        # I-check kung kailangan mag-search
+        # Simple heuristic: kung may "search", "what is", "who is", o mahaba ang tanong
+        search_keywords = ["search", "latest", "news", "what is", "who is", "when did", "how to"]
+        should_search = any(kw in prompt.lower() for kw in search_keywords) or len(prompt) > 50
 
-        # Trim kung masyadong mahaba na
+        search_context = ""
+        if should_search:
+            try:
+                results = tavily.search(query=prompt, max_results=3, search_depth="basic")
+                if results and results.get("results"):
+                    search_context = "\n\n[Web Search Results]\n"
+                    for r in results["results"]:
+                        search_context += f"- {r['title']}: {r['content'][:300]}\n"
+            except Exception as e:
+                print(f"Search error: {e}", flush=True)
+
+        # Idagdag ang search context sa user message
+        user_content = prompt + search_context
+        conversation_history[key].append({"role": "user", "content": user_content})
+
         if len(conversation_history[key]) > MAX_HISTORY:
             conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
 
-        # Buuin ang messages: system + history
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
 
         response = await client_ai.chat.completions.create(
@@ -106,8 +113,6 @@ if prompt.lower() in ["reset", "clear"]:
             temperature=0.4,
         )
         answer = response.choices[0].message.content
-
-        # I-save ang AI reply sa history
         conversation_history[key].append({"role": "assistant", "content": answer})
 
     except Exception as e:
