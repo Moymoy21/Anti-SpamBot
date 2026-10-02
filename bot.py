@@ -8,15 +8,13 @@ from tavily import TavilyClient
 
 tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
-# Memory per user per channel: (channel_id, user_id) -> list of messages
 conversation_history = defaultdict(list)
-MAX_HISTORY = 20  # Keep last 20 messages (10 exchanges)
+MAX_HISTORY = 20
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-# ⚠️ ITO ANG NAWAWALA SA'YO:
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
@@ -32,7 +30,6 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 OWNER_ROLE_ID = 1455066902308327526
 AI_PREFIX = ".ai"
 
-# Groq gamit ang OpenAI-compatible client
 client_ai = AsyncOpenAI(
     api_key=GROQ_API_KEY,
     base_url="https://api.groq.com/openai/v1"
@@ -68,55 +65,55 @@ async def on_message(message):
             return
 
         prompt = message.content[len(AI_PREFIX):].strip()
-if not prompt:
-    await message.reply("⚠️ Usage: `.ai <your question>`")
-    return
 
-# Reset command
-if prompt.lower() in ["reset", "clear"]:
-    key = (message.channel.id, message.author.id)
-    conversation_history.pop(key, None)
-    await message.reply("🧹 Conversation memory cleared.")
-    return
+        if not prompt:
+            await message.reply("⚠️ Usage: `.ai <your question>`")
+            return
+
+        # Reset command
+        if prompt.lower() in ["reset", "clear"]:
+            key = (message.channel.id, message.author.id)
+            conversation_history.pop(key, None)
+            await message.reply("🧹 Conversation memory cleared.")
+            return
+
         async with message.channel.typing():
-    try:
-        key = (message.channel.id, message.author.id)
-
-        # I-check kung kailangan mag-search
-        # Simple heuristic: kung may "search", "what is", "who is", o mahaba ang tanong
-        search_keywords = ["search", "latest", "news", "what is", "who is", "when did", "how to"]
-        should_search = any(kw in prompt.lower() for kw in search_keywords) or len(prompt) > 50
-
-        search_context = ""
-        if should_search:
             try:
-                results = tavily.search(query=prompt, max_results=3, search_depth="basic")
-                if results and results.get("results"):
-                    search_context = "\n\n[Web Search Results]\n"
-                    for r in results["results"]:
-                        search_context += f"- {r['title']}: {r['content'][:300]}\n"
+                key = (message.channel.id, message.author.id)
+
+                search_keywords = ["search", "latest", "news", "what is", "who is", "when did", "how to"]
+                should_search = any(kw in prompt.lower() for kw in search_keywords) or len(prompt) > 50
+
+                search_context = ""
+                if should_search:
+                    try:
+                        results = tavily.search(query=prompt, max_results=3, search_depth="basic")
+                        if results and results.get("results"):
+                            search_context = "\n\n[Web Search Results]\n"
+                            for r in results["results"]:
+                                search_context += f"- {r['title']}: {r['content'][:300]}\n"
+                    except Exception as e:
+                        print(f"Search error: {e}", flush=True)
+
+                user_content = prompt + search_context
+                conversation_history[key].append({"role": "user", "content": user_content})
+
+                if len(conversation_history[key]) > MAX_HISTORY:
+                    conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
+
+                messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+
+                response = await client_ai.chat.completions.create(
+                    model="deepseek-r1-distill-llama-70b",
+                    messages=messages,
+                    temperature=0.4,
+                )
+                answer = response.choices[0].message.content
+                conversation_history[key].append({"role": "assistant", "content": answer})
+
             except Exception as e:
-                print(f"Search error: {e}", flush=True)
+                answer = f"⚠️ AI Error: `{e}`"
 
-        # Idagdag ang search context sa user message
-        user_content = prompt + search_context
-        conversation_history[key].append({"role": "user", "content": user_content})
-
-        if len(conversation_history[key]) > MAX_HISTORY:
-            conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
-
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
-
-        response = await client_ai.chat.completions.create(
-            model="deepseek-r1-distill-llama-70b",
-            messages=messages,
-            temperature=0.4,
-        )
-        answer = response.choices[0].message.content
-        conversation_history[key].append({"role": "assistant", "content": answer})
-
-    except Exception as e:
-        answer = f"⚠️ AI Error: `{e}`"
         for i in range(0, len(answer), 1900):
             chunk = answer[i:i+1900]
             if i == 0:
