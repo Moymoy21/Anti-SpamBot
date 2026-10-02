@@ -6,16 +6,18 @@ RUN apt-get update && apt-get install -y \
     build-essential cmake g++ make \
     && rm -rf /var/lib/apt/lists/*
 
-# I-BUILD ANG LUAU MULA SA SOURCE
+# I-BUILD ANG LUAU MULA SA SOURCE (may tamang paths)
 RUN git clone --depth 1 https://github.com/luau-lang/luau.git /tmp/luau && \
     cd /tmp/luau && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build --target Luau.Repl.CLI -j$(nproc) && \
     cmake --build build --target Luau.Analyze.CLI -j$(nproc) && \
-    cp build/Luau.Repl.CLI /usr/local/bin/luau && \
-    cp build/Luau.Analyze.CLI /usr/local/bin/luau-analyze && \
-    cp build/Luau.Repl.CLI /usr/local/bin/luau-ast && \
-    cp build/Luau.Repl.CLI /usr/local/bin/luau-compile && \
+    cmake --build build --target Luau.Compile.CLI -j$(nproc) && \
+    cmake --build build --target Luau.Ast.CLI -j$(nproc) && \
+    cp build/Luau.Repl.CLI/luau /usr/local/bin/luau && \
+    cp build/Luau.Analyze.CLI/luau-analyze /usr/local/bin/luau-analyze && \
+    cp build/Luau.Compile.CLI/luau-compile /usr/local/bin/luau-compile && \
+    cp build/Luau.Ast.CLI/luau-ast /usr/local/bin/luau-ast && \
     chmod +x /usr/local/bin/luau* && \
     echo "=== LUAU BUILT SUCCESSFULLY ===" && \
     ls -la /usr/local/bin/ && \
