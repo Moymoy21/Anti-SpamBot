@@ -1,13 +1,20 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y git curl unzip wget && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git curl unzip wget file && rm -rf /var/lib/apt/lists/*
 
-# I-install ang Luau (gumamit ng specific version para sure)
-RUN wget https://github.com/luau-lang/luau/releases/download/0.607/luau-ubuntu.zip -O luau.zip \
-    && unzip -j luau.zip -d /usr/local/bin/ \
-    && chmod +x /usr/local/bin/luau* \
-    && rm luau.zip \
-    && ls -la /usr/local/bin/
+# I-install ang Luau WITH DIAGNOSTICS
+RUN curl -L -o luau.zip https://github.com/luau-lang/luau/releases/download/0.607/luau-ubuntu.zip && \
+    echo "=== FILE INFO ===" && \
+    ls -la luau.zip && \
+    file luau.zip && \
+    echo "=== ZIP CONTENTS ===" && \
+    unzip -l luau.zip && \
+    echo "=== EXTRACTING ===" && \
+    unzip -o luau.zip -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/luau* && \
+    echo "=== FINAL CHECK ===" && \
+    ls -la /usr/local/bin/ && \
+    rm luau.zip
 
 # I-clone ang KryptIT deobfuscator
 RUN git clone https://github.com/KryptIT/luraph-v15-v14.x-deobfuscator.git /app/deob
