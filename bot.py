@@ -32,7 +32,7 @@ AI_PREFIX = ".ai"
 
 # Models
 TEXT_MODEL = "openai/gpt-oss-120b"
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+VISION_MODEL = "qwen/qwen3.8-27b"
 
 client_ai = AsyncOpenAI(
     api_key=GROQ_API_KEY,
@@ -180,13 +180,13 @@ async def on_message(message):
                         reasoning_effort="medium",
                     )
                 else:
-                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
-                    response = await client_ai.chat.completions.create(
-                        model=model_to_use,
-                        messages=messages,
-                        temperature=0.4,
-                    )
-
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+    response = await client_ai.chat.completions.create(
+        model=model_to_use,
+        messages=messages,
+        temperature=1.0,
+        reasoning_effort="default",
+    )
                 answer = response.choices[0].message.content
                 conversation_history[key].append({"role": "assistant", "content": answer})
 
