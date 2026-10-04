@@ -53,6 +53,27 @@ If you don't know something, say "I don't know" instead of guessing.
 """
 
 
+def normalize_history_for_text(history):
+    """Convert any multimodal (list) content to plain text para sa text-only models."""
+    normalized = []
+    for msg in history:
+        if isinstance(msg.get("content"), list):
+            text_parts = []
+            has_image = False
+            for part in msg["content"]:
+                if part.get("type") == "text":
+                    text_parts.append(part["text"])
+                elif part.get("type") == "image_url":
+                    has_image = True
+            combined = " ".join(text_parts).strip()
+            if has_image:
+                combined += " [user sent an image]"
+            normalized.append({"role": msg["role"], "content": combined or "[image]"})
+        else:
+            normalized.append(msg)
+    return normalized
+
+
 @client.event
 async def on_ready():
     await tree.sync()
@@ -148,9 +169,10 @@ async def on_message(message):
                 if len(conversation_history[key]) > MAX_HISTORY:
                     conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
 
-                messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
-
                 if model_to_use == TEXT_MODEL:
+                    # Convert any multimodal history to text-only
+                    safe_history = normalize_history_for_text(conversation_history[key])
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + safe_history
                     response = await client_ai.chat.completions.create(
                         model=model_to_use,
                         messages=messages,
@@ -158,6 +180,7 @@ async def on_message(message):
                         reasoning_effort="medium",
                     )
                 else:
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
                     response = await client_ai.chat.completions.create(
                         model=model_to_use,
                         messages=messages,
