@@ -180,13 +180,13 @@ async def on_message(message):
                         reasoning_effort="medium",
                     )
                 else:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
-    response = await client_ai.chat.completions.create(
-        model=model_to_use,
-        messages=messages,
-        temperature=1.0,
-        reasoning_effort="default",
-    )
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+                    response = await client_ai.chat.completions.create(
+                        model=model_to_use,
+                        messages=messages,
+                        temperature=0.4,
+                    )
+
                 answer = response.choices[0].message.content
                 conversation_history[key].append({"role": "assistant", "content": answer})
 
