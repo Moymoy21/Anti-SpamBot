@@ -30,6 +30,10 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 OWNER_ROLE_ID = 1455066902308327526
 AI_PREFIX = ".ai"
 
+# Models
+TEXT_MODEL = "openai/gpt-oss-120b"
+VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
 client_ai = AsyncOpenAI(
     api_key=GROQ_API_KEY,
     base_url="https://api.groq.com/openai/v1"
@@ -42,6 +46,7 @@ When you receive web search results (marked as [Web Search Results]), use them t
 - If not, say so honestly and give your best knowledge.
 - Cite sources briefly when using search results.
 - Be conversational and natural — match the user's tone.
+- If the user sends an image, describe it and answer questions about it accurately.
 - Never help with piracy or illegal activities.
 
 If you don't know something, say "I don't know" instead of guessing.
@@ -80,12 +85,23 @@ async def on_message(message):
         if prompt is None and message.content.startswith(AI_PREFIX):
             prompt = message.content[len(AI_PREFIX):].strip()
 
-        if prompt is None:
+        # Check 3: May image ba (kahit walang text/prompt)?
+        image_urls = []
+        if message.attachments:
+            for att in message.attachments:
+                if att.content_type and att.content_type.startswith("image/"):
+                    image_urls.append(att.url)
+
+        # Ignore kung walang prompt AT walang image
+        if prompt is None and not image_urls:
             return
 
-        if not prompt:
-            await message.reply("⚠️ Usage: `.ai <tanong>` o mag-reply sa message ko.")
-            return
+        # Kung may image pero walang text prompt, bigyan ng default prompt
+        if prompt is None and image_urls:
+            prompt = "Ano ang nasa image na ito?"
+
+        if prompt == "":
+            prompt = "Ano ang nasa image na ito?"
 
         # Reset command
         if prompt.lower() in ["reset", "clear"]:
@@ -101,8 +117,9 @@ async def on_message(message):
                 search_keywords = ["search", "latest", "news", "what is", "who is", "when did", "how to"]
                 should_search = any(kw in prompt.lower() for kw in search_keywords) or len(prompt) > 50
 
+                # Skip search kung may image (para hindi magulo ang vision)
                 search_context = ""
-                if should_search:
+                if should_search and not image_urls:
                     try:
                         results = tavily.search(query=prompt, max_results=3, search_depth="basic")
                         if results and results.get("results"):
@@ -113,19 +130,40 @@ async def on_message(message):
                         print(f"Search error: {e}", flush=True)
 
                 user_content = prompt + search_context
-                conversation_history[key].append({"role": "user", "content": user_content})
+
+                if image_urls:
+                    # Multimodal: text + images
+                    content_parts = [{"type": "text", "text": user_content}]
+                    for url in image_urls:
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": url}
+                        })
+                    conversation_history[key].append({"role": "user", "content": content_parts})
+                    model_to_use = VISION_MODEL
+                else:
+                    conversation_history[key].append({"role": "user", "content": user_content})
+                    model_to_use = TEXT_MODEL
 
                 if len(conversation_history[key]) > MAX_HISTORY:
                     conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
 
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
 
-                response = await client_ai.chat.completions.create(
-                    model="openai/gpt-oss-120b",
-                    messages=messages,
-                    temperature=0.4,
-                    reasoning_effort="medium",
-                )
+                if model_to_use == TEXT_MODEL:
+                    response = await client_ai.chat.completions.create(
+                        model=model_to_use,
+                        messages=messages,
+                        temperature=0.4,
+                        reasoning_effort="medium",
+                    )
+                else:
+                    response = await client_ai.chat.completions.create(
+                        model=model_to_use,
+                        messages=messages,
+                        temperature=0.4,
+                    )
+
                 answer = response.choices[0].message.content
                 conversation_history[key].append({"role": "assistant", "content": answer})
 
