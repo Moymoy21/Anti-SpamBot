@@ -54,7 +54,6 @@ If you don't know something, say "I don't know" instead of guessing.
 
 
 def normalize_history_for_text(history):
-    """Convert any multimodal (list) content to plain text para sa text-only models."""
     normalized = []
     for msg in history:
         if isinstance(msg.get("content"), list):
@@ -85,46 +84,38 @@ async def on_message(message):
     if message.author == client.user or not message.guild:
         return
 
-    # ==== AI HANDLER ====
     if message.channel.id == AI_CHANNEL_ID:
         prompt = None
 
-        # Check 1: Nag-reply ba sa bot?
         if message.reference and message.reference.message_id:
             try:
                 replied = message.reference.resolved
                 if not replied:
                     replied = await message.channel.fetch_message(message.reference.message_id)
-
                 if replied and replied.author.id == client.user.id:
                     prompt = message.content.strip()
                     print(f"Reply detected from {message.author}: {prompt}", flush=True)
             except Exception as e:
                 print(f"Fetch replied message error: {e}", flush=True)
 
-        # Check 2: May .ai prefix ba?
         if prompt is None and message.content.startswith(AI_PREFIX):
             prompt = message.content[len(AI_PREFIX):].strip()
 
-        # Check 3: May image ba (kahit walang text/prompt)?
         image_urls = []
         if message.attachments:
             for att in message.attachments:
                 if att.content_type and att.content_type.startswith("image/"):
                     image_urls.append(att.url)
 
-        # Ignore kung walang prompt AT walang image
         if prompt is None and not image_urls:
             return
 
-        # Kung may image pero walang text prompt, bigyan ng default prompt
         if prompt is None and image_urls:
             prompt = "Ano ang nasa image na ito?"
 
         if prompt == "":
             prompt = "Ano ang nasa image na ito?"
 
-        # Reset command
         if prompt.lower() in ["reset", "clear"]:
             key = (message.channel.id, message.author.id)
             conversation_history.pop(key, None)
@@ -138,7 +129,6 @@ async def on_message(message):
                 search_keywords = ["search", "latest", "news", "what is", "who is", "when did", "how to"]
                 should_search = any(kw in prompt.lower() for kw in search_keywords) or len(prompt) > 50
 
-                # Skip search kung may image (para hindi magulo ang vision)
                 search_context = ""
                 if should_search and not image_urls:
                     try:
@@ -153,7 +143,6 @@ async def on_message(message):
                 user_content = prompt + search_context
 
                 if image_urls:
-                    # Multimodal: text + images
                     content_parts = [{"type": "text", "text": user_content}]
                     for url in image_urls:
                         content_parts.append({
@@ -170,24 +159,23 @@ async def on_message(message):
                     conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
 
                 if model_to_use == TEXT_MODEL:
-    # Convert any multimodal history to text-only
-    safe_history = normalize_history_for_text(conversation_history[key])
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + safe_history
-    response = await client_ai.chat.completions.create(
-        model=model_to_use,
-        messages=messages,
-        temperature=0.4,
-        max_tokens=800,
-        reasoning_effort="medium",
-    )
-else:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
-    response = await client_ai.chat.completions.create(
-        model=model_to_use,
-        messages=messages,
-        temperature=0.4,
-        max_tokens=800,
-    )
+                    safe_history = normalize_history_for_text(conversation_history[key])
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + safe_history
+                    response = await client_ai.chat.completions.create(
+                        model=model_to_use,
+                        messages=messages,
+                        temperature=0.4,
+                        max_tokens=800,
+                        reasoning_effort="medium",
+                    )
+                else:
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+                    response = await client_ai.chat.completions.create(
+                        model=model_to_use,
+                        messages=messages,
+                        temperature=0.4,
+                        max_tokens=800,
+                    )
 
                 answer = response.choices[0].message.content
                 conversation_history[key].append({"role": "assistant", "content": answer})
@@ -203,7 +191,6 @@ else:
                 await message.channel.send(chunk)
         return
 
-    # ==== ANTI-SPAM HANDLER ====
     if message.channel.id == TARGET_CHANNEL_ID:
         if message.author.guild_permissions.administrator:
             return
@@ -233,4 +220,4 @@ else:
                 print(f"Nabigo ang pag-kick: {e}", flush=True)
 
 
-client.run(TOKEN)
+client.run(TOKEN)m
