@@ -170,22 +170,24 @@ async def on_message(message):
                     conversation_history[key] = conversation_history[key][-MAX_HISTORY:]
 
                 if model_to_use == TEXT_MODEL:
-                    # Convert any multimodal history to text-only
-                    safe_history = normalize_history_for_text(conversation_history[key])
-                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + safe_history
-                    response = await client_ai.chat.completions.create(
-                        model=model_to_use,
-                        messages=messages,
-                        temperature=0.4,
-                        reasoning_effort="medium",
-                    )
-                else:
-                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
-                    response = await client_ai.chat.completions.create(
-                        model=model_to_use,
-                        messages=messages,
-                        temperature=0.4,
-                    )
+    # Convert any multimodal history to text-only
+    safe_history = normalize_history_for_text(conversation_history[key])
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + safe_history
+    response = await client_ai.chat.completions.create(
+        model=model_to_use,
+        messages=messages,
+        temperature=0.4,
+        max_tokens=800,
+        reasoning_effort="medium",
+    )
+else:
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+    response = await client_ai.chat.completions.create(
+        model=model_to_use,
+        messages=messages,
+        temperature=0.4,
+        max_tokens=800,
+    )
 
                 answer = response.choices[0].message.content
                 conversation_history[key].append({"role": "assistant", "content": answer})
