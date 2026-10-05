@@ -220,4 +220,4 @@ async def on_message(message):
                 print(f"Nabigo ang pag-kick: {e}", flush=True)
 
 
-client.run(TOKEN)m
+client.run(TOKEN)
