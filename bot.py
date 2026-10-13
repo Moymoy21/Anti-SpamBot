@@ -18,7 +18,6 @@ intents.members = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# ==== ENV VARIABLES ====
 TOKEN = os.getenv("DISCORD_TOKEN")
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID", 0))
 ALLOWED_ROLE_ID = int(os.getenv("ALLOWED_ROLE_ID", 0))
@@ -27,10 +26,8 @@ LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", 0))
 AI_CHANNEL_ID = int(os.getenv("AI_CHANNEL_ID", 0))
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-OWNER_ROLE_ID = 1455066902308327526
 AI_PREFIX = ".ai"
 
-# Models
 TEXT_MODEL = "openai/gpt-oss-120b"
 VISION_MODEL = "qwen/qwen3.8-27b"
 
@@ -54,6 +51,7 @@ If you don't know something, say "I don't know" instead of guessing.
 
 
 def normalize_history_for_text(history):
+    """Convert multimodal (list) content to plain text for text-only models."""
     normalized = []
     for msg in history:
         if isinstance(msg.get("content"), list):
@@ -71,6 +69,30 @@ def normalize_history_for_text(history):
         else:
             normalized.append(msg)
     return normalized
+
+
+def strip_old_images(history):
+    """Keep images only in the most recent message to avoid image limits."""
+    if not history:
+        return history
+    result = []
+    for msg in history[:-1]:
+        if isinstance(msg.get("content"), list):
+            text_parts = []
+            has_image = False
+            for part in msg["content"]:
+                if part.get("type") == "text":
+                    text_parts.append(part["text"])
+                elif part.get("type") == "image_url":
+                    has_image = True
+            combined = " ".join(text_parts).strip()
+            if has_image:
+                combined += " [user sent an image earlier]"
+            result.append({"role": msg["role"], "content": combined or "[image]"})
+        else:
+            result.append(msg)
+    result.append(history[-1])
+    return result
 
 
 @client.event
@@ -143,6 +165,7 @@ async def on_message(message):
                 user_content = prompt + search_context
 
                 if image_urls:
+                    image_urls = image_urls[:3]
                     content_parts = [{"type": "text", "text": user_content}]
                     for url in image_urls:
                         content_parts.append({
@@ -169,7 +192,8 @@ async def on_message(message):
                         reasoning_effort="medium",
                     )
                 else:
-                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history[key]
+                    trimmed = strip_old_images(conversation_history[key])
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + trimmed
                     response = await client_ai.chat.completions.create(
                         model=model_to_use,
                         messages=messages,
