@@ -51,7 +51,6 @@ If you don't know something, say "I don't know" instead of guessing.
 
 
 def normalize_history_for_text(history):
-    """Convert multimodal (list) content to plain text for text-only models."""
     normalized = []
     for msg in history:
         if isinstance(msg.get("content"), list):
@@ -72,7 +71,6 @@ def normalize_history_for_text(history):
 
 
 def strip_old_images(history):
-    """Keep images only in the most recent message to avoid image limits."""
     if not history:
         return history
     result = []
@@ -109,6 +107,7 @@ async def on_message(message):
     if message.channel.id == AI_CHANNEL_ID:
         prompt = None
 
+        # Check 1: Reply to bot?
         if message.reference and message.reference.message_id:
             try:
                 replied = message.reference.resolved
@@ -120,24 +119,31 @@ async def on_message(message):
             except Exception as e:
                 print(f"Fetch replied message error: {e}", flush=True)
 
+        # Check 2: .ai prefix?
         if prompt is None and message.content.startswith(AI_PREFIX):
             prompt = message.content[len(AI_PREFIX):].strip()
 
+        # Ignore kung walang .ai prefix at walang reply-to-bot
+        if prompt is None:
+            return
+
+        # Kolektahin ang images PAGKATAPOS ma-trigger
         image_urls = []
         if message.attachments:
             for att in message.attachments:
                 if att.content_type and att.content_type.startswith("image/"):
                     image_urls.append(att.url)
 
-        if prompt is None and not image_urls:
+        # Kung may image pero walang text prompt, default prompt
+        if not prompt and image_urls:
+            prompt = "Ano ang nasa image na ito?"
+
+        # Kung walang prompt at walang image, mag-ask ng usage
+        if not prompt and not image_urls:
+            await message.reply("⚠️ Usage: `.ai <tanong>` o mag-reply sa message ko.")
             return
 
-        if prompt is None and image_urls:
-            prompt = "Ano ang nasa image na ito?"
-
-        if prompt == "":
-            prompt = "Ano ang nasa image na ito?"
-
+        # Reset command
         if prompt.lower() in ["reset", "clear"]:
             key = (message.channel.id, message.author.id)
             conversation_history.pop(key, None)
@@ -241,7 +247,7 @@ async def on_message(message):
                 await message.guild.kick(message.author, reason="Nag-chat sa restricted channel.")
                 print(f"Na-kick si {message.author} dahil nag-chat sa ipinagbabawal na channel.", flush=True)
             except Exception as e:
-                print(f"Nabigo ang pag-kick: {e}", flush=True)
+                print(f"Nabago ang pag-kick: {e}", flush=True)
 
 
 client.run(TOKEN)
